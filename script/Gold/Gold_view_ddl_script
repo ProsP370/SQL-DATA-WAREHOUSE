@@ -1,1 +1,99 @@
+/*
+===============================================================================
+Gold Layer Views
+===============================================================================
 
+Purpose:
+    The Gold layer provides business-friendly views for reporting and analytics.
+
+What this script does:
+    1. Creates Gold.dim_products with product and category details.
+    2. Creates Gold.dim_customers with customer details.
+    3. Creates Gold.fact_sales with sales measures and product/customer keys.
+
+View behavior:
+    - Views store their SELECT definitions; they do not store a separate copy
+      of the query results.
+    - ROW_NUMBER() generates product and customer keys when the views are read.
+    - IF OBJECT_ID(..., 'V') IS NOT NULL checks whether each view exists.
+      If it does, DROP VIEW removes it so CREATE VIEW can recreate it.
+
+Assumed source tables and join keys:
+    - SILVER.erp_px_cat_g1v2: pn.Cat_id = pc.id
+    - SILVER.erp_cust_az12:   ca.Cst_key = ci.cid
+    - SILVER.erp_loc_a101:    ca.Cst_key = la.cid
+    - SILVER.crm_sales_details connects to product and customer dimensions
+      through sls_prd_key and sls_cust_id.
+===============================================================================
+*/
+
+IF OBJECT_ID('Gold.dim_products', 'V') IS NOT NULL
+    DROP VIEW Gold.dim_products;
+GO
+
+CREATE VIEW Gold.dim_products AS
+SELECT
+    ROW_NUMBER() OVER (
+        ORDER BY pn.Prd_start_dt, pn.Prd_key
+    ) AS Product_key,
+    pn.Prd_id AS Product_id,
+    pn.Prd_key AS Product_number,
+    pn.Prd_nm AS Product_name,
+    pn.Cat_id AS Category_id,
+    pc.erp_CAT AS Category,
+    pc.erp_SUBCAT AS Subcategory,
+    pc.erp_MAINTENANCE AS Maintenance,
+    pn.Prd_cost AS Cost,
+    pn.Prd_line AS Product_line,
+    pn.Prd_start_dt AS Start_date
+FROM SILVER.crm_prd_info AS pn
+LEFT JOIN SILVER.erp_px_cat_g1v2 AS pc
+    ON pn.Cat_id = pc.id;
+GO
+
+IF OBJECT_ID('Gold.dim_customers', 'V') IS NOT NULL
+    DROP VIEW Gold.dim_customers;
+GO
+
+CREATE VIEW Gold.dim_customers AS
+SELECT
+    ROW_NUMBER() OVER (
+        ORDER BY ca.Cst_id
+    ) AS Customer_key,
+    ca.Cst_id AS customer_id,
+    ca.Cst_key AS customer_number,
+    ca.Cst_firstname AS first_name,
+    ca.Cst_lastname AS last_name,
+    la.erp_CNTRY AS Country,
+    ca.Cst_marital_status AS marital_status,
+    ca.Cst_gndr AS gender,
+    ci.erp_BDATE AS birthdate,
+    ca.Cst_create_date AS create_date
+FROM SILVER.crm_cust_info AS ca
+LEFT JOIN SILVER.erp_cust_az12 AS ci
+    ON ca.Cst_key = ci.cid
+LEFT JOIN SILVER.erp_loc_a101 AS la
+    ON ca.Cst_key = la.cid;
+GO
+
+IF OBJECT_ID('Gold.fact_sales', 'V') IS NOT NULL
+    DROP VIEW Gold.fact_sales;
+GO
+
+CREATE VIEW Gold.fact_sales AS
+SELECT
+    sd.sls_ord_num AS Order_number,
+    pn.Product_key,
+    cu.Customer_key,
+    sd.sls_order_dt AS Order_date,
+    sd.sls_ship_dt AS Ship_date,
+    sd.sls_due_dt AS Due_date,
+    sd.sls_sales AS Sales,
+    sd.sls_quantity AS Quantity,
+    sd.sls_price AS Price
+FROM SILVER.crm_sales_details AS sd
+LEFT JOIN Gold.dim_products AS pn
+    ON sd.sls_prd_key = pn.Product_number
+LEFT JOIN Gold.dim_customers AS cu
+    ON sd.sls_cust_id = cu.customer_id;
+GO
