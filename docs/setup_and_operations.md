@@ -1,171 +1,93 @@
 # Setup and Operations
 
-## 1. Overview
+## Purpose
 
-This project is a SQL Server warehouse pattern that requires a working SQL Server environment, source CSV files, and a structured sequence of commands to create the database, load data, transform it, and validate the final output.
+This guide describes prerequisites, safe setup, execution order, reruns, and troubleshooting for the SQL Server warehouse. The repository currently contains manually executed SQL scripts; it does not define an orchestrator or automated deployment process.
 
-This document describes the operational workflow for running the project safely and consistently.
+## Prerequisites
 
-## 2. Prerequisites
+- Microsoft SQL Server and a T-SQL client such as SQL Server Management Studio that supports `GO`.
+- Permissions required to create databases, schemas, tables, procedures, and views.
+- The six source files: `cust_info.csv`, `prd_info.csv`, `sales_details.csv`, `CUST_AZ12.csv`, `loc_A101.csv`, `PX_CAT_G1V2.csv`.
+- A source folder readable by the SQL Server service account.
+- A development/test database or explicit approval and backup before destructive scripts.
 
-You need:
+The CSVs are not included in the repository. Confirm their header, column order, delimiter, encoding, date formats, and null representations before loading.
 
-- Microsoft SQL Server
-- SQL Server Management Studio or another SQL client supporting T-SQL
-- access to the six source CSV files
-- permission to create databases, schemas, tables, views, and procedures
-- access to the folder where the CSV files are stored
+## Destructive-operation warning
 
-## 3. Required source files
+`script/Init-sql-database` drops and recreates `DATAWAREHOUSE` if it already exists. Bronze and Silver DDL scripts drop and recreate tables; load procedures truncate targets. These operations can permanently remove data. Confirm the connected SQL Server and database, inspect the scripts, and back up required data. Do not run these scripts against valuable data without approval.
 
-The warehouse expects the following source CSVs:
+## Execution order
 
-- `cust_info.csv`
-- `prd_info.csv`
-- `sales_details.csv`
-- `CUST_AZ12.csv`
-- `loc_A101.csv`
-- `PX_CAT_G1V2.csv`
+1. **Review environment and SQL.** Confirm database target, server permissions, source files, and code. Reconcile current DDL/procedure/view column and type mismatches before claiming the pipeline is executable.
+2. **Initialize database.** Run `script/Init-sql-database` only in an approved environment; verify `DATAWAREHOUSE` and `BRONZE`, `SILVER`, `GOLD` schemas.
+3. **Create Bronze tables.** Run `script/bronze/ddl bronze script`.
+4. **Configure loader paths.** Update local paths in `script/bronze/proc-stored-procedure`. Confirm server-side access and source file contract.
+5. **Create/run Bronze loader.** The script defines `dbo.Load_bronze` and includes an `EXEC Load_bronze` at the end, so executing the whole file also starts a load. Review before running.
+6. **Validate Bronze.** Run `tests/silver-data-quality`. Despite the filename, it queries Bronze. Investigate results.
+7. **Create Silver tables.** Run `script/silver/ddl silver script` after reviewing its drop behavior.
+8. **Run Silver transform.** Create and execute `silver.load_silver` from `script/silver/proc-silver-stored-procedure`; verify output and target counts.
+9. **Create Gold views.** Run `script/Gold/Gold_view_ddl_script` only after confirming referenced columns exist.
+10. **Validate Gold.** Run `tests/gold_quality_checks`; review results before reporting use.
 
-These files are not included in the repository. They must be obtained and placed in a location that the SQL Server service account can access.
+Test the complete sequence with representative files. Documentation alone does not prove that the scripts execute successfully.
 
-## 4. Database initialization
+## File access and configuration
 
-Use the script in `script/Init-sql-database` to create the `DATAWAREHOUSE` database and its schemas.
+The Bronze procedure contains hardcoded local Windows paths. Change them to paths accessible from the SQL Server host. SQL Server’s service account needs read permission; access from the interactive user running SSMS is insufficient. Avoid storing secrets or sensitive file contents in SQL files or Git.
 
-Important:
+## Full refresh and safe reruns
 
-- the script is destructive;
-- it drops and recreates the database if it already exists;
-- back up any existing data before running it.
+Bronze and Silver use truncate-and-load behavior. A rerun overwrites the current layer contents and does not preserve previous snapshots. After an error:
 
-The script creates the following schemas:
+1. identify which target tables were truncated or loaded;
+2. inspect SQL errors and per-table row counts;
+3. verify the source files are complete and intended for this run;
+4. decide whether a full reload is safe and restart from a known-good stage;
+5. rerun validation before rebuilding/publishing Gold;
+6. record the issue, resolution, and any accepted exceptions.
 
-- `BRONZE`
-- `SILVER`
-- `GOLD`
+The current code does not provide persistent run IDs, full transaction/recovery semantics, or a durable audit trail. Do not assume a procedure’s printed output proves every table loaded correctly.
 
-## 5. Execution order
+## Troubleshooting
 
-Run the scripts in this order:
+### `BULK INSERT` cannot access a CSV
 
-1. Initialize the database and schemas.
-2. Create the Bronze tables.
-3. Update the CSV paths in the Bronze load procedure.
-4. Run the Bronze load procedure.
-5. Run Bronze/source quality checks.
-6. Create the Silver tables.
-7. Execute the Silver transformation.
-8. Create or refresh the Gold views.
-9. Run Gold quality checks.
-10. Use the Gold views for reporting.
+Check server-side path, file existence, service-account permissions, exact file name, encoding, delimiter, first-row setting, and source column order.
 
-## 6. Bronze load
+### Import/conversion failure
 
-The Bronze load procedure is in:
+Compare CSV layout and values with Bronze DDL. Check invalid dates/numbers, quoted delimiters, embedded newlines, and unexpected null markers. Retain a safe sample for reproduction without exposing personal data.
 
-- `script/bronze/ddl bronze script`
-- `script/bronze/proc-stored-procedure`
+### Silver transformation fails
 
-The procedure:
+Check database context, object creation order, column names/types, insert target lists, and permissions. Compare procedure expressions with Silver table definitions.
 
-- truncates each Bronze table;
-- loads the relevant CSV file using `BULK INSERT`;
-- prints timings to the output window;
-- uses a full-refresh pattern rather than incremental loading.
+### Gold view fails
 
-Current limitation: the file paths are specific to a machine and must be replaced for each new environment.
+Verify that all referenced Silver tables and columns exist, join keys have compatible types, schema names are correct, and SQL batches are executed in the intended order. The current repository has apparent object/column mismatches, so reconcile the definitions first.
 
-## 7. Silver transformation
+### Quality checks return rows
 
-The Silver transformation procedure is in:
+Review the rule and records. Determine whether the cause is source quality, transformation behavior, incorrect join cardinality, or an approved exception. Do not delete rows merely to make a test return empty.
 
-- `script/silver/ddl silver script`
-- `script/silver/proc-silver-stored-procedure`
+### Gold totals are too high
 
-This step applies the cleaning, normalization, deduplication, and mapping rules needed before the data becomes report-ready.
+Investigate duplicate keys on dimension/reference join sides and verify the fact grain. Join fan-out can multiply fact records and inflate measures.
 
-This is where the project standardizes values and prepares the data for joins and dimension logic.
+## Security and privacy
 
-## 8. Gold creation
+Customer names, birthdates, gender, marital status, and country should be treated as sensitive personal data. Apply least-privilege access, use approved/masked data for demonstrations, do not commit real extracts, and follow organizational retention and privacy requirements. The repository does not define the applicable policy or retention duration; obtain those from the data owner.
 
-The Gold reporting views are created by:
+## Operational improvements recommended
 
-- `script/Gold/Gold_view_ddl_script`
+For repeated or production-like use, add configurable source locations, load audit tables, per-table counts, structured errors, explicit transaction/recovery behavior, automated quality gates, scheduling, monitoring/alerts, backup/restore guidance, and named operational ownership. These are recommendations, not current implemented capabilities.
 
-This script creates:
+## Related documents
 
-- `GOLD.dim_products`
-- `GOLD.dim_customers`
-- `GOLD.fact_sales`
-
-Before using these views in reporting, validate the data against the quality checks.
-
-## 9. Operational best practices
-
-### Use a test environment first
-
-Always test the full flow in a dev or test environment before using the warehouse in a production-like environment.
-
-### Keep source-path configuration outside code
-
-Avoid hardcoding local workstation paths in scripts. A better pattern is to configure source folders in a controlled environment or document the file location as part of deployment instructions.
-
-### Validate before trusting results
-
-Do not assume a successful script run means the data is trustworthy. The project depends on input validity and transformation logic that must be checked.
-
-### Log loads and exceptions
-
-The current project prints output to the SQL console, but it does not yet store a formal run log. Recommended additions include:
-
-- run ID;
-- source file list;
-- row counts before and after each load;
-- start and end timestamps;
-- error details for each failed step.
-
-## 10. Troubleshooting common issues
-
-### Problem: `BULK INSERT` cannot access the CSV file
-
-Possible causes:
-
-- wrong file path;
-- wrong file name;
-- SQL Server service account cannot access the folder;
-- file encoding or delimiter mismatch.
-
-### Problem: load succeeds but quality checks return rows
-
-This usually means the source data has quality issues or the transformation logic did not fully correct them. Investigate the returned rows and decide whether to:
-
-- correct the source data;
-- update the transformation logic;
-- document an allowed exception.
-
-### Problem: Gold view fails to create
-
-Check the following:
-
-- the required Silver objects exist;
-- the referenced columns exist in the target tables;
-- the schema names and object names are spelled correctly;
-- the data types and join conditions are compatible.
-
-### Problem: a rerun unexpectedly removes data
-
-This is expected with the current design because the scripts truncate tables before reloading. Confirm whether the target tables are intentionally being cleared before rerunning.
-
-## 11. Recovery and rerun guidance
-
-Because the project uses full-refresh patterns:
-
-- always review the data before rerunning;
-- check whether the previous load completed partially or failed after truncation;
-- redeploy or re-run from a known good source state where possible;
-- document what you changed before a full rerun.
-
-## 12. Summary
-
-This project is easy to run in a controlled environment and is a good example of a basic warehouse pipeline. It works best when the source files are valid, the scripts are reviewed before execution, and the data is validated after each major step. With that discipline, the project can produce a reliable Bronze–Silver–Gold data flow for reporting and learning.
+- [Architecture](architecture.md)
+- [Data integration](data_integration.md)
+- [Data models](data_models.md)
+- [Data catalog](data_catalog.md)
+- [Quality checks](quality_checks.md)
