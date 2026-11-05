@@ -1,110 +1,66 @@
 # Data Models
 
-## Purpose
+## Purpose and scope
 
-This document explains the project’s conceptual and dimensional model, intended row grain, relationships, keys, and implementation caveats. The model describes analytical intent; it should not be mistaken for enforced constraints where the SQL currently defines views without primary or foreign keys.
+This document describes the business entities, intended dimensional model, row grain, relationships, and key assumptions. It distinguishes the intended model from the current SQL implementation, which has schema/column mismatches that must be reconciled before execution is considered validated.
 
-## Business entities and relationships
+## Model diagram photo slot
 
-The warehouse integrates three business subjects:
+> **Photo placeholder:** Upload the model/ERD image later at `docs/images/data_model.png`. Then replace this note with: `![Warehouse data model](images/data_model.png)`.
 
-- **Customer**: CRM customer profile enriched by ERP birthdate, gender, and country references.
-- **Product**: CRM product definition enriched by ERP category, subcategory, and maintenance metadata.
-- **Sales**: CRM transaction records associated with customers and products.
+## Business entities
 
-```mermaid
-erDiagram
-    CUSTOMER ||--o{ SALES : makes
-    PRODUCT ||--o{ SALES : included_in
-    CUSTOMER {
-        int customer_id
-        string customer_number
-        string country
-    }
-    PRODUCT {
-        int product_id
-        string product_number
-        string product_name
-        string category
-    }
-    SALES {
-        string order_number
-        date order_date
-        decimal sales_amount
-        int quantity
-    }
-```
+- **Customer:** CRM customer profile, optionally enriched with ERP birthdate, gender, and country.
+- **Product:** CRM product record/version, optionally enriched with ERP category, subcategory, and maintenance attributes.
+- **Sales:** CRM sales-detail records associated with customer and product records.
 
-The diagram expresses intended relationships, not physical SQL constraints.
-
-## Dimensional model and grain
+## Intended Gold dimensional model and grain
 
 ### `GOLD.dim_customers`
 
-**Intended grain:** one row per CRM customer business entity after customer duplicate resolution. Attributes include customer ID and number, first/last name, country, marital status, gender, birthdate, and record creation date. Confirm which source is authoritative for each attribute and how conflicting ERP matches are handled.
+**Intended grain:** one row per resolved CRM customer. Intended attributes: customer key, customer ID and business number, first and last name, country, marital status, gender, birthdate, and record creation date. ERP fields are enrichment attributes; confirm whether enrichment is optional and how multiple ERP matches are handled.
 
 ### `GOLD.dim_products`
 
-**Intended grain:** one row per product, or one row per product version if historical validity is required. Attributes include product ID/number/name, category/subcategory, maintenance, cost, product line, and start date. Since product validity dates are modeled in Silver, decide whether the Gold dimension retains all versions or only a current product record.
+**Intended grain:** one row per product, or one row per product version when historical reporting is required. Intended attributes: product key, product ID/number/name, category ID/name, subcategory, maintenance classification, cost, product line, and start date. Define the product history and effective-date policy.
 
 ### `GOLD.fact_sales`
 
-**Intended grain:** the SQL suggests one row per CRM sales-detail record. Confirm this against the source. `sls_ord_num` may identify an order rather than a unique order line, so the exact natural key must be established before declaring uniqueness or aggregating.
+**Intended grain:** one row per CRM sales-detail record, subject to confirmation against the source. `sls_ord_num` may identify an order rather than a unique line, so it may not alone identify a fact row. Intended fields include order number, customer and product dimension keys, order/ship/due dates, sales amount, quantity, and price.
 
-Measures exposed include sales, quantity, and price. Business definitions must specify currency, units, gross/net basis, discount/tax inclusion, returns/cancellations, and rounding/precision.
+Document currency, units, gross/net basis, discount/tax inclusion, returns/cancellations, sign behavior, and rounding before interpreting measures.
 
-## Relationships and join logic
+## Relationships and join rules
 
-The Gold SQL intends to connect:
+- Sales customer reference → customer dimension business identifier.
+- Sales product reference → product dimension product number.
+- CRM customer business key → ERP customer and location references.
+- CRM product category key → ERP product category reference.
 
-- fact product business key to product dimension number;
-- fact customer ID to customer dimension ID;
-- CRM customer key to ERP customer/location references;
-- product category key to ERP product category reference.
+Check uniqueness of every right-hand join key. Duplicate reference keys can fan out joins and inflate fact counts and measures. Measure unmatched keys and define whether they remain unassigned or map to an explicit unknown member.
 
-Validate uniqueness at each right-hand join key. Duplicate reference keys can create join fan-out, duplicating fact rows and increasing measures. Measure unmatched counts and decide whether unmatched rows are rejected, quarantined, retained with null attributes, or assigned an explicit unknown dimension member.
+## Keys and history
 
-## Physical objects
+The current Gold view SQL generates customer/product keys with `ROW_NUMBER()`. These are query-time values, not stable keys for downstream persistence. If stable identifiers or point-in-time reporting are needed, materialize dimensions and define key assignment, updates, late-arriving records, and slowly changing dimension behavior.
 
-### Bronze
+## Assumptions to confirm
 
-`BRONZE.crm_cust_info`, `BRONZE.crm_prd_info`, `BRONZE.crm_sales_details`, `BRONZE.erp_CUST_AZ12`, `BRONZE.erp_loc_A101`, `BRONZE.erp_PX_CAT_G1V2`.
+1. Exact sales fact natural key and row grain.
+2. Whether customer/product source versions and duplicate reference rows are expected.
+3. Product effective-date and history behavior.
+4. Definitions, currency, and units for all measures.
+5. Required versus optional attributes and ERP enrichment.
+6. Handling of unknown, invalid, unmatched, and late-arriving records.
+7. Retention and point-in-time reporting needs.
 
-### Silver
+## Current SQL contract caveats
 
-`SILVER.crm_cust_info`, `SILVER.crm_prd_info`, `SILVER.crm_sales_details`, `SILVER.erp_CUST_AZ12`, `SILVER.erp_loc_A101`, `SILVER.erp_PX_CAT_G1V2`.
-
-### Gold
-
-`GOLD.dim_customers`, `GOLD.dim_products`, and `GOLD.fact_sales` are views in the current Gold DDL.
-
-The current DDL primarily declares nullable columns and does not establish primary-key, unique, or foreign-key constraints. Validation therefore depends on the SQL checks and disciplined key assumptions.
-
-## Key strategy
-
-Source business identifiers include customer IDs/keys, product IDs/keys, order numbers, and ERP identifiers. The Gold views generate product/customer keys with `ROW_NUMBER()`. These are query-time row numbers, not stable persisted warehouse surrogate keys; changes in source rows or ordering can change their values. Do not store them as durable external references.
-
-If durable keys are needed, materialize dimension tables and define key assignment, updates, unknown-member behavior, and historical handling. The current implementation does not provide a complete Type 1/Type 2 slowly changing dimension framework.
-
-## Model assumptions to confirm
-
-- The fact row grain and unique natural key.
-- Whether multiple customer/product source versions are expected.
-- Product effective-date and history policy.
-- Measure definitions, currency and units.
-- Required versus optional dimension attributes.
-- Whether ERP enrichment is mandatory.
-- Treatment of unmatched dimensions and late-arriving references.
-- Whether data retention or point-in-time reporting is required.
-
-## Implementation caveats
-
-The model must be aligned with actual executable SQL. Current Silver DDL, transformations, and Gold views have apparent column-name and type mismatches: category fields referenced by transformations/views are not consistently declared, ERP key names differ across definitions, and sales dates are converted but declared as integer in Silver DDL. Correct and test these before relying on the physical model.
+The checked-in Silver procedure writes `cat_id` to `SILVER.crm_prd_info`, but the Silver DDL shown in the repository does not define `cat_id`. Gold SQL joins `pc.id`, `ci.cid`, and `la.cid`, while corresponding ERP DDL declares `erp_ID` and `erp_CID`. Silver sales dates are transformed as dates, but the current Silver DDL declares those columns as integers. Align DDL, transformations, and Gold view references before treating this model as executable.
 
 ## Related documents
 
 - [Architecture](architecture.md)
 - [Data integration](data_integration.md)
-- [Data catalog](data_catalog.md)
-- [Naming conventions](naming_conventions.md)
+- [Data flow](data_flow.md)
+- [Gold data catalog](data_catalog.md)
 - [Quality checks](quality_checks.md)

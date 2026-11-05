@@ -1,102 +1,56 @@
-# Architecture
+# Data Architecture
 
-## Document purpose
+## Purpose
 
-This document explains the SQL Data Warehouse project’s system boundary, processing layers, major objects, data flow, and operational limitations. It describes the repository as it exists and labels proposed capabilities as recommendations rather than implemented features.
+This document describes the SQL Server warehouse layers and how their responsibilities fit together. It reflects the current repository implementation and calls out areas that still need validation; it is not proof that the full pipeline currently runs successfully.
 
 ## Project overview
 
-The project brings together CRM customer, product, and sales extracts with ERP customer, location, and product-category reference extracts in a SQL Server database named `DATAWAREHOUSE`. The intended outcome is a reporting layer with customer and product dimensions and a sales fact view.
+The warehouse is intended to combine CRM customer, product, and sales extracts with ERP customer, location, and product-category reference data in the `DATAWAREHOUSE` database. SQL Server DDL creates the layer schemas and tables, stored procedures load Bronze and transform to Silver, and Gold views expose reporting datasets. The repository does not currently define an orchestration service.
 
-The repository contains SQL Server DDL, stored procedures, views, and SQL diagnostic checks. It does not contain the input CSVs or an orchestration service.
+## Architecture photo slot
 
-## System context and flow
-
-```text
-CRM CSVs                              ERP CSVs
-cust_info.csv                         CUST_AZ12.csv
-prd_info.csv                          loc_A101.csv
-sales_details.csv                     PX_CAT_G1V2.csv
-     |                                     |
-     +------------------+------------------+
-                        v
-           SQL Server: DATAWAREHOUSE
-                        |
-             BRONZE: source landing tables
-                        |
-             SILVER: transformed tables
-                        |
-             GOLD: reporting views
-                        |
-             SQL / BI analytics consumers
-```
-
-The intended data lifecycle is file delivery → Bronze load → source validation → Silver transformations → Gold view creation → Gold validation → analytics use.
+> **Photo placeholder:** Upload the architecture screenshot/diagram later and place it at `docs/images/data_architecture.png`. Then replace this note with: `![Data warehouse architecture](images/data_architecture.png)`.
 
 ## Layer responsibilities
 
-### Bronze
+### Bronze — source landing
 
-Bronze is the source-oriented landing layer. It contains six tables: `crm_cust_info`, `crm_prd_info`, `crm_sales_details`, `erp_CUST_AZ12`, `erp_loc_A101`, and `erp_PX_CAT_G1V2`. The `dbo.Load_bronze` procedure uses `BULK INSERT` to load corresponding CSV files. The load truncates each destination before inserting, so it is a full refresh rather than an incremental process.
+Bronze contains six source-aligned tables: `crm_cust_info`, `crm_prd_info`, `crm_sales_details`, `erp_CUST_AZ12`, `erp_loc_A101`, and `erp_PX_CAT_G1V2`. `dbo.Load_bronze` bulk-loads the CSV files. The current procedure truncates targets before loading and uses locally hardcoded file paths. Bronze is intended to retain source-oriented values; the current DDL does not include file/run audit columns or persistent snapshots.
 
-Bronze is intended to make source data available for validation and downstream processing. Persistent source snapshots, file checksums, and load audit history are not currently implemented.
+### Silver — prepared and standardized
 
-### Silver
+Silver contains corresponding CRM and ERP subject tables. `silver.load_silver` currently trims and maps selected values, resolves customer duplicates using the latest creation date, derives product category/product keys and product validity end dates, converts sales dates, and normalizes selected ERP identifiers and attributes. These are coded transformations; confirm their business meaning and edge-case policy with the data owner.
 
-Silver is the preparation and standardization layer. `silver.load_silver` currently contains transformations for trimming and mapping attributes, selecting a customer record by latest creation date, deriving product fields and validity dates, converting sales date values, adjusting inconsistent sales/price values, normalizing ERP identifiers, and standardizing selected country and gender values.
+### Gold — reporting datasets
 
-The transformation rules are code behavior, not necessarily approved business definitions. Confirm them with source and business owners before using outputs as authoritative measures.
+Gold exposes `dim_customers`, `dim_products`, and `fact_sales` as SQL views. Customer and product dimensions enrich CRM records using ERP reference data. The sales fact associates sales details with the dimensions. Views calculate rows when queried; they are not persisted tables. Current dimension keys use `ROW_NUMBER()` and therefore are not durable surrogate keys.
 
-### Gold
+## Intended architecture flow
 
-Gold contains three intended reporting views: `dim_customers`, `dim_products`, and `fact_sales`. The views combine Silver objects and provide more report-oriented aliases. They are SQL views and do not materialize separate query results. Customer and product keys are generated with `ROW_NUMBER()` at query time and are not stable persisted identifiers.
+CSV source files → Bronze landing → source validation → Silver transformations → Gold views → Gold validation → analytics/reporting consumers.
 
-## Model overview
+The visual data-flow documentation is maintained in [Data Flow](data_flow.md), where photo slots are reserved for later uploads.
 
-The Gold layer is intended as a star-like model: a sales fact relates to customer and product dimensions. The expected fact grain appears to be one sales-detail record, but this must be verified against source data. The repository does not establish a formal unique sales-line key or enforce physical foreign keys.
-
-See [Data models](data_models.md) for grain, relationships, and key-design considerations.
-
-## Validation components
-
-- `tests/silver-data-quality` checks Bronze data despite its filename.
-- `tests/gold_quality_checks` checks the Gold views.
-
-The checks are manually executed SQL diagnostics. They do not automatically fail loads, persist history, or prevent reporting publication.
-
-## Technologies and execution model
+## Runtime and validation
 
 - Database engine: Microsoft SQL Server / T-SQL.
-- Source format: CSV files loaded with `BULK INSERT`.
-- Transformations: SQL stored procedures and views.
-- Execution: currently manual; no scheduler or orchestration framework is defined in the repository.
+- Source format: CSV via `BULK INSERT`.
+- Transformations: stored procedures and views.
+- Execution: currently manual; no scheduler is defined in the repository.
+- `tests/silver-data-quality` currently checks Bronze despite its filename; `tests/gold_quality_checks` checks Gold views.
 
-## Security and data handling
+## Known implementation risks
 
-Customer data includes names, birthdates, gender, marital status, and country. Access should follow least privilege. Do not commit real source files, credentials, or sensitive extracts. Use synthetic or approved masked data for public demonstrations. Retention and privacy requirements must be supplied by the data owner; they are not defined by the scripts.
+Reconcile the SQL contracts before relying on an end-to-end run. The Silver procedure inserts `cat_id` into `SILVER.crm_prd_info`, but the checked-in Silver DDL does not declare that column. The Gold views refer to ERP columns such as `id` and `cid`, while the ERP DDL declares names such as `erp_ID` and `erp_CID`. The Silver sales transform converts dates, while its declared DDL currently uses integer date columns. These are documented mismatches, not resolved by this architecture description.
 
-## Known limitations and implementation validation
-
-Before claiming the pipeline is executable end-to-end, reconcile the code. Current SQL appears to contain schema/column mismatches: for example, the Gold definitions reference ERP/product columns that do not match the declared Silver DDL, and Silver sales date columns are declared as integers although the transformation converts values to dates. The database initialization script is destructive and its existence check should be validated. Run all scripts in sequence against representative data after correcting these issues.
-
-Other current limitations:
-
-- local hardcoded source file paths;
-- full refresh, with no incremental history;
-- no persistent load audit, alerting, or retry framework;
-- no automated quality gates;
-- query-time, unstable dimension keys;
-- source contracts and freshness expectations not formally defined.
-
-## Future architecture improvements
-
-Prioritize: reconcile and test schemas; externalize paths; add batch/run audit and row counts; make failure and recovery behavior explicit; automate quality gates; define stable persisted keys if required; and introduce incremental processing only when source volume and history requirements justify it.
+Other limitations include destructive full refreshes, hardcoded source paths, no durable run audit or automated quality gate, and unstable query-time dimension keys. Customer names and birthdates are personal data; use least-privilege access and approved masked or synthetic data for demonstrations.
 
 ## Related documents
 
-- [Data integration](data_integration.md)
 - [Data models](data_models.md)
-- [Data catalog](data_catalog.md)
+- [Data integration](data_integration.md)
+- [Data flow](data_flow.md)
+- [Gold data catalog](data_catalog.md)
 - [Naming conventions](naming_conventions.md)
-- [Quality checks](quality_checks.md)
 - [Setup and operations](setup_and_operations.md)
