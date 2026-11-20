@@ -1,1 +1,26 @@
+# Data Flow
 
+This diagram shows how data moves from the CRM and ERP source systems through the warehouse to reporting-ready tables.
+
+## Flow overview
+
+1. **Sources:** CRM provides sales, customer, and product data; ERP provides customer, location, and product-category data.
+2. **Bronze layer:** Raw source data is first loaded into the warehouse with minimal changes.
+3. **Silver layer:** Data is cleaned and standardized so it can be joined consistently.
+4. **Gold layer:** Curated tables support analysis: `fact_sales` stores sales activity, while `dim_customers` and `dim_products` provide descriptive context.
+
+Arrows indicate the direction of data movement and how source tables contribute to the final tables.
+
+## Data flow diagram
+
+<!-- Insert the overall diagram here. Suggested file: docs/images/data-flow.png -->
+
+[Insert overall data flow picture here]
+
+## Additional pictures
+
+<!-- Add layer or transformation screenshots below as needed. -->
+
+[Insert Bronze/Silver transformation picture here]
+
+[Insert Gold tables or reporting picture here]
