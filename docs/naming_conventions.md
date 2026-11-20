@@ -4,8 +4,6 @@
 
 This document records naming styles present in the project’s data dictionary and SQL definitions, then gives consistent rules for future work. Existing names are not completely uniform. This document distinguishes **observed conventions** from **recommended conventions**; it does not claim the current SQL has already been renamed.
 
-Use the [Data catalog](data_catalog.md) for the meaning of individual fields and abbreviations.
-
 ## 1. Layer/schema naming
 
 The project uses layer names as schemas:
@@ -98,7 +96,7 @@ Documentation files should use lowercase `snake_case.md`, e.g. `data_integration
 4. Use `dim_`/`fact_` for Gold dimensional objects.
 5. Prefer full, meaningful names in curated layers; retain source abbreviations only when needed for lineage.
 6. Reserve `_id` for identifiers, `_key` for documented business/surrogate keys, `_date` for date fields, and explicit names such as `sales_amount` and `unit_price` for measures.
-7. Document abbreviations, aliases, exceptions, and business definitions in the data catalog.
+7. Document abbreviations, aliases, exceptions, and business definitions alongside the relevant SQL and documentation.
 8. Check downstream dependencies before renaming any published object or field.
 
 ## 9. Examples
@@ -114,4 +112,4 @@ Documentation files should use lowercase `snake_case.md`, e.g. `data_integration
 
 ## Summary
 
-The data dictionary uses source/subject prefixes (`Cst_`, `Prd_`, `sls_`, `erp_`), compact abbreviations (`nm`, `dt`, `BDATE`, `CNTRY`), and identifier/measure suffixes (`_id`, `_key`, `_sales`, `_quantity`, `_price`). The Gold layer uses `dim_` and `fact_` prefixes with readable but inconsistently cased aliases. Keep source naming traceable in raw layers, document every abbreviation, and use one explicit lowercase `snake_case` convention for new curated objects.
+The data dictionary uses source/subject prefixes (`Cst_`, `Prd_`, `sls_`, `erp_`), compact abbreviations (`nm`, `dt`, `BDATE`, `CNTRY`), and identifier/measure suffixes (`_id`, `_key`, `_sales`, `_quantity`, `_price`). The Gold layer uses `dim_` and `fact_` prefixes with readable but inconsistently cased aliases. Keep source naming traceable in raw layers, document every abbreviation and exception, and use one explicit lowercase `snake_case` convention for new curated objects.
