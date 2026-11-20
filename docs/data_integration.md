@@ -4,27 +4,8 @@
 
 CRM and ERP data are integrated to create the warehouse dimensions and fact data. The CRM system supplies sales transactions and core customer and product records, while the ERP system supplies additional customer and product attributes.
 
-```mermaid
-flowchart LR
-    subgraph CRM[CRM]
-        SALES[crm_sales_details<br/>Prd_key<br/>cst_id]
-        CUSTOMER[crm_cust_info<br/>cst_id<br/>cst_key]
-        PRODUCT[crm_prd_info<br/>Prd_Key]
-    end
+<img width="1570" height="1022" alt="Relatonal tables" src="https://github.com/user-attachments/assets/75eb1f46-4d9d-4d16-94bf-408955f1147f" />
 
-    subgraph ERP[ERP]
-        EXTRA[erp_cust_az12<br/>erp_cid]
-        LOCATION[erp_loc_a101<br/>erp_cid]
-        CATEGORY[erp_px_cat_g1v2<br/>id]
-    end
-
-    SALES -->|Prd_key| PRODUCT
-    SALES -->|cst_id| CUSTOMER
-
-    CUSTOMER -->|cst_key| EXTRA
-    CUSTOMER -->|cst_key| LOCATION
-    PRODUCT -->|Prd_Key| CATEGORY
-```
 
 ## Source and Warehouse Mapping
 
