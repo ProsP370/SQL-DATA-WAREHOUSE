@@ -1,104 +1,145 @@
-# Data Catalog
+# Gold Data Catalog
 
-## Purpose and interpretation
+## Purpose
 
-This catalog is the project’s reference for warehouse layers, datasets, fields, intended grain, source lineage, and known caveats. Bronze names/types are taken from the declared Bronze DDL. Silver and Gold descriptions represent intended transformations and view outputs; reconcile names and types against executable SQL because current scripts contain inconsistencies.
+This catalog describes the **Gold layer** only. It documents the business-ready views used for reporting and analysis.
 
-## Layer catalog
+The Gold layer combines cleaned data from Silver and presents it in an easy-to-use format:
 
-| Layer | Schema | Purpose | Current behavior |
-| --- | --- | --- | --- |
-| Raw landing | `BRONZE` | Hold CSV-derived source records | `BULK INSERT`; tables are truncated before the current full refresh. |
-| Prepared | `SILVER` | Standardize values and prepare joins | Stored procedure transforms Bronze; no historical snapshot is maintained. |
-| Reporting | `GOLD` | Expose business-facing dimensions and facts | SQL views; query results are not materialized. |
+- **Customer dimension** — customer information
+- **Product dimension** — product and category information
+- **Sales fact** — sales transactions and measures
 
-## Object catalog
+> Bronze and Silver objects are not described in this catalog.
 
-| Object | Intended grain | Description / source |
+## Gold Objects
+
+| Gold view | Type | Business purpose |
 | --- | --- | --- |
-| `BRONZE.crm_cust_info` | Source customer record | CRM customer extract, `cust_info.csv`. |
-| `BRONZE.crm_prd_info` | Source product/version record | CRM product extract, `prd_info.csv`. |
-| `BRONZE.crm_sales_details` | Source sales detail | CRM transaction extract, `sales_details.csv`. |
-| `BRONZE.erp_CUST_AZ12` | ERP customer reference row | Customer birthdate/gender, `CUST_AZ12.csv`. |
-| `BRONZE.erp_loc_A101` | ERP location reference row | Customer country, `loc_A101.csv`. |
-| `BRONZE.erp_PX_CAT_G1V2` | ERP product category reference row | Category metadata, `PX_CAT_G1V2.csv`. |
-| `SILVER.crm_cust_info` | Latest selected customer record per ID | CRM customer values after trimming/mapping/deduplication. |
-| `SILVER.crm_prd_info` | Product record/version | CRM product values after key, line, cost, and validity transformations. |
-| `SILVER.crm_sales_details` | Sales detail | CRM sales values with date and measure transformations. |
-| `SILVER.erp_CUST_AZ12` | ERP customer reference | Normalized customer ID, birthdate, and gender. |
-| `SILVER.erp_loc_A101` | ERP location reference | Normalized customer ID and country. |
-| `SILVER.erp_PX_CAT_G1V2` | ERP category reference | Category, subcategory, maintenance attributes. |
-| `GOLD.dim_customers` | Intended one row per customer | Customer profile enriched with ERP attributes. |
-| `GOLD.dim_products` | Intended product or product-version row | Product details enriched with ERP category attributes. |
-| `GOLD.fact_sales` | Intended one row per sales-detail record; confirm | Sales dates/measures joined to customer and product views. |
+| `GOLD.dim_customers` | Dimension | Contains one reporting row for each customer. |
+| `GOLD.dim_products` | Dimension | Contains one reporting row for each product. |
+| `GOLD.fact_sales` | Fact | Contains sales transactions and their customer and product references. |
 
-## CRM customer fields (`BRONZE.crm_cust_info`)
+## Customer Dimension
 
-| Field | Declared type | Meaning and notes |
-| --- | --- | --- |
-| `Cst_id` | `int` | Customer identifier; candidate business key. |
-| `Cst_key` | `nvarchar(50)` | Customer matching/business key used for cross-source joins. |
-| `Cst_firstname` | `nvarchar(50)` | First name; trimmed in Silver. Personal data. |
-| `Cst_lastname` | `nvarchar(50)` | Last name; trimmed in Silver. Personal data. |
-| `Cst_marital_status` | `nvarchar(50)` | Source status code; Silver maps `S`/`M` and otherwise emits `n/a`. |
-| `Cst_gndr` | `nvarchar(50)` | Source gender code; Silver maps `F`/`M` and otherwise emits `n/a`. Personal data. |
-| `Cst_create_date` | `date` | Customer record creation date; used to select latest record. |
+**View:** `GOLD.dim_customers`
 
-## CRM product fields (`BRONZE.crm_prd_info`)
+This view combines CRM customer data with ERP birthdate and country information.
 
-| Field | Declared type | Meaning and notes |
-| --- | --- | --- |
-| `Prd_id` | `int` | Product identifier. |
-| `Prd_key` | `nvarchar(50)` | Product matching/business key; parsed in Silver. |
-| `Prd_nm` | `nvarchar(50)` | Product display name. |
-| `Prd_cost` | `int` | Product cost; missing values currently become zero in Silver. Currency/units are unspecified. |
-| `Prd_line` | `nvarchar(50)` | Source line code; mapped to descriptive label in Silver. |
-| `Prd_start_dt` | `date` | Product validity start date. |
-| `Prd_end_dt` | `date` | Product validity end; Silver derives end dates from subsequent starts in current logic. |
+| Column | Meaning |
+| --- | --- |
+| `Customer_key` | Reporting key generated for the customer dimension. |
+| `customer_id` | CRM customer identifier. |
+| `customer_number` | Customer key used to match customer information across systems. |
+| `first_name` | Customer's first name. |
+| `last_name` | Customer's last name. |
+| `Country` | Customer country from ERP location data. |
+| `marital_status` | Customer marital status. |
+| `gender` | Customer gender. |
+| `birthdate` | Customer birthdate from ERP data. |
+| `create_date` | Date the customer record was created. |
 
-## CRM sales fields (`BRONZE.crm_sales_details`)
+**Simple join logic:**
 
-| Field | Declared type | Meaning and notes |
-| --- | --- | --- |
-| `sls_ord_num` | `nvarchar(50)` | Order identifier; does not by itself prove a unique sales-line grain. |
-| `sls_prd_key` | `nvarchar(50)` | Product reference used to join product data. |
-| `sls_cust_id` | `int` | Customer reference used to join customer data. |
-| `sls_order_dt` | `int` | Source date encoded as integer, expected `YYYYMMDD`. |
-| `sls_ship_dt` | `int` | Source ship date encoded as integer, expected `YYYYMMDD`. |
-| `sls_due_dt` | `int` | Source due date encoded as integer, expected `YYYYMMDD`. |
-| `sls_sales` | `int` | Sales value; Silver may recalculate. Currency and gross/net definition need owner confirmation. |
-| `sls_quantity` | `int` | Quantity measure. Unit is not documented. |
-| `sls_price` | `int` | Price measure; currency and precision need confirmation. |
+- CRM customer data is the starting point.
+- ERP birthdate data is matched using `customer_number` and `erp_cid`.
+- ERP country data is matched using `customer_number` and `erp_cid`.
+- Unmatched CRM customers remain in the result.
 
-## ERP fields
+## Product Dimension
 
-| Object.field | Declared type | Meaning and notes |
-| --- | --- | --- |
-| `erp_CUST_AZ12.erp_CID` | `nvarchar(50)` | ERP customer identifier; Silver removes `NAS` prefix where present. |
-| `erp_CUST_AZ12.erp_BDATE` | `date` | Customer birthdate; future dates become `NULL`. Personal data. |
-| `erp_CUST_AZ12.erp_GEN` | `nvarchar(50)` | ERP gender value; standardized in Silver. Personal data. |
-| `erp_loc_A101.erp_CID` | `nvarchar(50)` | ERP customer reference identifier; hyphens removed in Silver. |
-| `erp_loc_A101.erp_CNTRY` | `nvarchar(50)` | Country code/value; selected codes are mapped to country names. |
-| `erp_PX_CAT_G1V2.erp_ID` | `nvarchar(50)` | ERP product/category reference identifier. |
-| `erp_PX_CAT_G1V2.erp_CAT` | `nvarchar(50)` | Product category label. |
-| `erp_PX_CAT_G1V2.erp_SUBCAT` | `nvarchar(50)` | Product subcategory label. |
-| `erp_PX_CAT_G1V2.erp_MAINTENANCE` | `nvarchar(50)` | Maintenance classification. |
+**View:** `GOLD.dim_products`
 
-## Gold view field intent
+This view combines CRM product data with ERP category information.
 
-- `GOLD.dim_customers`: generated customer key, customer ID/number, first/last name, country, marital status, gender, birthdate, and create date.
-- `GOLD.dim_products`: generated product key, product ID/number/name, category fields, cost, product line, and start date.
-- `GOLD.fact_sales`: order number, generated dimension keys, order/ship/due dates, sales, quantity, and price.
+| Column | Meaning |
+| --- | --- |
+| `Product_key` | Reporting key generated for the product dimension. |
+| `Product_id` | Internal CRM product identifier. |
+| `Product_number` | Product number used for matching and reporting. |
+| `Product_name` | Name of the product. |
+| `Category_id` | Product category identifier. |
+| `Category` | Product category name. |
+| `Subcategory` | Product subcategory name. |
+| `Maintenance` | Product maintenance classification. |
+| `Cost` | Product cost. |
+| `Product_line` | Product line or brand category. |
+| `Start_date` | Date the product became available. |
 
-Gold surrogate keys are generated by `ROW_NUMBER()` in views and are not stable identifiers. Confirm exact aliases against the Gold SQL and repaired Silver schema before using them in downstream contracts.
+**Simple join logic:**
 
-## Business metadata to complete
+- CRM product data is the starting point.
+- ERP category data is matched using `Category_id` and `erp_id`.
+- Unmatched CRM products remain in the result.
 
-For each field/table, add owner/steward, sensitivity classification, authoritative source, refresh expectation, retention period, nullable/required status, allowed values, and downstream consumers. Business owners must define sales currency/semantics, fact grain, and treatment of returns before the catalog can be considered a complete business glossary.
+## Sales Fact
 
-## Related documents
+**View:** `GOLD.fact_sales`
 
-- [Data integration](data_integration.md)
-- [Data models](data_models.md)
-- [Naming conventions](naming_conventions.md)
-- [Quality checks](quality_checks.md)
+This view contains the sales transactions available for reporting.
+
+| Column | Meaning |
+| --- | --- |
+| `Order_number` | Sales order identifier. |
+| `Product_key` | Reference to `GOLD.dim_products.Product_number`. |
+| `Customer_key` | Reference to `GOLD.dim_customers.customer_id`. |
+| `Order_date` | Date the order was placed. |
+| `Ship_date` | Date the order was shipped. |
+| `Due_date` | Date the order was due. |
+| `Sales` | Sales amount for the transaction. |
+| `Quantity` | Quantity sold. |
+| `Price` | Price used for the transaction. |
+
+**Simple join logic:**
+
+- Sales records start from the Silver CRM sales table.
+- Product keys match the product dimension by product number.
+- Customer keys match the customer dimension by customer ID.
+
+## Reporting Model
+
+```text
+GOLD.dim_customers     GOLD.dim_products
+        │                      │
+        └──────────┬───────────┘
+                   │
+             GOLD.fact_sales
+```
+
+- `GOLD.fact_sales` contains the business measures.
+- `GOLD.dim_customers` provides customer details.
+- `GOLD.dim_products` provides product details.
+
+## Important Notes
+
+- Gold objects are SQL views. They return results when queried but do not store a separate copy of the data.
+- Dimension keys generated with `ROW_NUMBER()` are created when the view is read. They should not be treated as permanent database identifiers.
+- `GOLD.fact_sales` does not currently enforce database-level foreign-key constraints.
+- Prices, currencies, sales calculations, and return behavior should be confirmed with the business owner before financial reporting.
+- The customer and product views use left joins so that base CRM records are retained when ERP enrichment is unavailable.
+
+## Using the Gold Layer
+
+Example: to view customer sales, join the fact and dimensions by their keys:
+
+```sql
+SELECT
+    s.Order_number,
+    c.first_name,
+    c.last_name,
+    p.Product_name,
+    s.Sales,
+    s.Quantity
+FROM GOLD.fact_sales AS s
+LEFT JOIN GOLD.dim_customers AS c
+    ON s.Customer_key = c.customer_id
+LEFT JOIN GOLD.dim_products AS p
+    ON s.Product_key = p.Product_number;
+```
+
+## Related Documents
+
+- [Architecture](architecture.md)
+- [Data Integration](data_integration.md)
+- [Data Models](data_models.md)
+- [Quality Checks](quality_checks.md)
