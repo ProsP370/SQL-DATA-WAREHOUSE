@@ -12,28 +12,9 @@ The warehouse integrates three business subjects:
 - **Product**: CRM product definition enriched by ERP category, subcategory, and maintenance metadata.
 - **Sales**: CRM transaction records associated with customers and products.
 
-```mermaid
-erDiagram
-    CUSTOMER ||--o{ SALES : makes
-    PRODUCT ||--o{ SALES : included_in
-    CUSTOMER {
-        int customer_id
-        string customer_number
-        string country
-    }
-    PRODUCT {
-        int product_id
-        string product_number
-        string product_name
-        string category
-    }
-    SALES {
-        string order_number
-        date order_date
-        decimal sales_amount
-        int quantity
-    }
-```
+
+<img width="1446" height="914" alt="Customer model star,io" src="https://github.com/user-attachments/assets/75b135ea-3589-4114-848c-998d13bd3b67" />
+
 
 The diagram expresses intended relationships, not physical SQL constraints.
 
