@@ -2,21 +2,33 @@
 
 ## How Data Is Integrated
 
-The warehouse integrates CRM and ERP CSV extracts through a manual batch process:
+CRM and ERP data are integrated to create the warehouse dimensions and fact data. The CRM system supplies sales transactions and core customer and product records, while the ERP system supplies additional customer and product attributes.
 
-```text
-CRM/ERP CSV files
-        ↓
-Bronze (raw data loaded with BULK INSERT)
-        ↓
-Silver (cleaned and standardized data)
-        ↓
-Gold (reporting views)
+```mermaid
+flowchart LR
+    subgraph CRM[CRM]
+        SALES[crm_sales_details<br/>Prd_key<br/>cst_id]
+        CUSTOMER[crm_cust_info<br/>cst_id<br/>cst_key]
+        PRODUCT[crm_prd_info<br/>Prd_Key]
+    end
+
+    subgraph ERP[ERP]
+        EXTRA[erp_cust_az12<br/>erp_cid]
+        LOCATION[erp_loc_a101<br/>erp_cid]
+        CATEGORY[erp_px_cat_g1v2<br/>id]
+    end
+
+    SALES -->|Prd_key| PRODUCT
+    SALES -->|cst_id| CUSTOMER
+
+    CUSTOMER -->|cst_key| EXTRA
+    CUSTOMER -->|cst_key| LOCATION
+    PRODUCT -->|Prd_Key| CATEGORY
 ```
 
-The source files are loaded into Bronze tables, cleaned and transformed into Silver tables, and combined into Gold views for reporting.
+## Source and Warehouse Mapping
 
-| Source | File | Bronze table | Silver table | Gold use |
+| Source | Source file | Bronze table | Silver table | Gold use |
 | --- | --- | --- | --- | --- |
 | CRM | `cust_info.csv` | `BRONZE.crm_cust_info` | `SILVER.crm_cust_info` | Customer dimension |
 | CRM | `prd_info.csv` | `BRONZE.crm_prd_info` | `SILVER.crm_prd_info` | Product dimension |
@@ -25,12 +37,21 @@ The source files are loaded into Bronze tables, cleaned and transformed into Sil
 | ERP | `loc_A101.csv` | `BRONZE.erp_loc_A101` | `SILVER.erp_loc_A101` | Customer countries |
 | ERP | `PX_CAT_G1V2.csv` | `BRONZE.erp_PX_CAT_G1V2` | `SILVER.erp_PX_CAT_G1V2` | Product categories |
 
+## Integration Relationships
+
+- `crm_sales_details.Prd_key` links sales transactions to `crm_prd_info.Prd_Key` for product analysis.
+- `crm_sales_details.cst_id` links sales transactions to `crm_cust_info.cst_id` for customer analysis.
+- `crm_cust_info.cst_key` is linked to `erp_cust_az12.erp_cid` to add extra customer information, including the birth date.
+- `crm_cust_info.cst_key` is also linked to `erp_loc_a101.erp_cid` to add the customer's country.
+- `crm_prd_info.Prd_Key` is linked to `erp_px_cat_g1v2.id` to add product category information.
+
 ## Integration Rules
 
 - Bronze loads truncate each target table before inserting the source data.
-- Silver cleans names, dates, identifiers, and codes from the Bronze tables.
-- Gold combines CRM and ERP data using customer and product keys.
-- Left joins preserve unmatched records and allow missing ERP enrichment to be identified.
+- Silver cleans names, dates, identifiers, codes, and text fields from the Bronze tables.
+- Gold left joins CRM records with ERP enrichment so unmatched source records are preserved.
+- Customer and product keys must be standardized before joins are applied.
+- CRM values provide the primary dimensions and facts; ERP values enrich those records.
 - Data quality checks should run after Bronze, Silver, and Gold processing.
 
 ## Related Documents
