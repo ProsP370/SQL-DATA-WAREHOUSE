@@ -12,24 +12,7 @@ The repository contains SQL Server DDL, stored procedures, views, and SQL diagno
 
 ## System context and flow
 
-```text
-CRM CSVs                              ERP CSVs
-cust_info.csv                         CUST_AZ12.csv
-prd_info.csv                          loc_A101.csv
-sales_details.csv                     PX_CAT_G1V2.csv
-     |                                     |
-     +------------------+------------------+
-                        v
-           SQL Server: DATAWAREHOUSE
-                        |
-             BRONZE: source landing tables
-                        |
-             SILVER: transformed tables
-                        |
-             GOLD: reporting views
-                        |
-             SQL / BI analytics consumers
-```
+<img width="1550" height="1052" alt="Data architecture draw corrected 2" src="https://github.com/user-attachments/assets/134062d7-c635-4e20-b22b-193d49283531" />
 
 The intended data lifecycle is file delivery → Bronze load → source validation → Silver transformations → Gold view creation → Gold validation → analytics use.
 
