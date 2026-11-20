@@ -37,7 +37,8 @@ It demonstrates ETL workflows, dimensional modeling, SQL development, data quali
 
 ## 🔄 Data Architecture
 
-<img width="1548" height="1040" alt="Data architecture flow diagram" src="https://github.com/user-attachments/assets/0ff33a09-0e8a-4550-9f57-dd2b7acf73dc" />
+<img width="1550" height="1052" alt="Data architecture draw corrected 2" src="https://github.com/user-attachments/assets/35178b09-811c-43ff-a951-8dcc7e35fc53" />
+
 
 
 ## 🛠️ Technologies
