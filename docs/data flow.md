@@ -13,14 +13,4 @@ Arrows indicate the direction of data movement and how source tables contribute 
 
 ## Data flow diagram
 
-<!-- Insert the overall diagram here. Suggested file: docs/images/data-flow.png -->
-
-[Insert overall data flow picture here]
-
-## Additional pictures
-
-<!-- Add layer or transformation screenshots below as needed. -->
-
-[Insert Bronze/Silver transformation picture here]
-
-[Insert Gold tables or reporting picture here]
+<img width="1538" height="962" alt="Data flow diagram" src="https://github.com/user-attachments/assets/c1fa7ebc-e1c8-4b0c-a231-d634a17eb4d6" />
