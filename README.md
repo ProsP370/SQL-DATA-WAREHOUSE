@@ -35,12 +35,10 @@ It demonstrates ETL workflows, dimensional modeling, SQL development, data quali
 - Provides reporting-ready views.
 - Supports downstream dashboards and analysis.
 
-## 🔄 Data Flow
+## 🔄 Data Architecture
 
-```text
-CSV Sources → Bronze Tables → Silver Tables → Gold Views
-    CRM/ERP        Raw Data       Clean Data      Reporting
-```
+<img width="1548" height="1040" alt="Data architecture flow diagram" src="https://github.com/user-attachments/assets/0ff33a09-0e8a-4550-9f57-dd2b7acf73dc" />
+
 
 ## 🛠️ Technologies
 
