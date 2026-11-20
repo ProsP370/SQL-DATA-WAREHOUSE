@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document records naming styles present in the project’s data dictionary and SQL definitions, then gives consistent rules for future work. Existing names are not completely uniform. This document distinguishes **observed conventions** from **recommended conventions**; it does not claim the current SQL has already been renamed.
+This document records naming styles present in the project’s data dictionary and SQL definitions, then gives consistent rules for future work. Use this guide when creating or reviewing warehouse objects. Existing names are not completely uniform; the conventions below apply especially to new objects and planned renaming efforts.
 
 ## 1. Layer/schema naming
 
@@ -14,7 +14,7 @@ The project uses layer names as schemas:
 | `SILVER` | Cleaned/conformed | `SILVER.crm_prd_info` |
 | `GOLD` | Reporting/analytics | `GOLD.dim_customers` |
 
-The intended convention is uppercase layer schemas. Existing statements vary between `Gold`, `GOLD`, `bronze`, and `BRONZE`; use uppercase consistently in new or revised SQL. SQL Server’s case sensitivity depends on collation, so do not rely on inconsistent casing for distinct names.
+The intended convention is uppercase layer schemas. Existing statements vary between `Gold`, `GOLD`, `bronze`, and `BRONZE`; use uppercase consistently in new or revised SQL. SQL Server’s case sensitivity may vary by database configuration, so naming should not depend on case-only differences.
 
 ## 2. Source-system prefixes
 
@@ -53,7 +53,7 @@ The source dictionary prefixes columns with a subject/system abbreviation:
 | `sls_` | CRM sales | `sls_ord_num`, `sls_prd_key`, `sls_order_dt`, `sls_quantity` |
 | `erp_` | ERP fields | `erp_CID`, `erp_BDATE`, `erp_CNTRY`, `erp_CAT` |
 
-These are observed source-oriented styles. They help distinguish similar fields and preserve data lineage. Existing capitalization is mixed; normalize new warehouse-created identifiers to lowercase unless exact source fidelity is required.
+These are observed source-oriented styles. They help distinguish similar fields and preserve data lineage. Existing capitalization is mixed; normalize new warehouse-created identifiers to lowercase snake case while retaining original source mappings when documented.
 
 ## 5. Dictionary suffixes and abbreviations observed
 
@@ -78,13 +78,13 @@ An abbreviation is not a full business definition and does not guarantee a SQL d
 
 Gold aliases aim to be business-friendly but currently mix capitalization and styles, e.g. `Product_key`, `customer_id`, `Order_date`, `Sales`. That is an observed inconsistency.
 
-Recommended style for newly introduced Gold fields is lowercase `snake_case` and explicit meaning, e.g. `customer_key`, `product_key`, `order_date`, `sales_amount`, `quantity`, `unit_price`. If consumers depend on old aliases, change them through a planned compatibility migration rather than a silent rename.
+Recommended style for newly introduced Gold fields is lowercase `snake_case` and explicit meaning, e.g. `customer_key`, `product_key`, `order_date`, `sales_amount`, `quantity`, `unit_price`. If consumers already depend on established aliases, document and migrate them deliberately rather than renaming silently.
 
 ## 7. Procedure and SQL file styles
 
-Observed procedure names include `dbo.Load_bronze` and `silver.load_silver`; the capitalization differs. A consistent convention for future procedures is `<schema>.load_<layer>` or an equally explicit action-oriented name, e.g. `silver.load_silver`. Verify the schema and procedure name in code before documenting it as canonical.
+Observed procedure names include `dbo.Load_bronze` and `silver.load_silver`; the capitalization differs. A consistent convention for future procedures is `<schema>.load_<layer>` or an equally explicit verb-based name, all in lowercase.
 
-Current script names include spaces, mixed case, and vague descriptions (`ddl bronze script`, `Gold_view_ddl_script`). These are existing filenames, not a recommended standard. New SQL files should use lowercase `snake_case`, meaningful object/action, and `.sql` extension, e.g. `bronze_table_ddl.sql`, `load_bronze.sql`, `gold_views.sql`.
+Current script names include spaces, mixed case, and vague descriptions (`ddl bronze script`, `Gold_view_ddl_script`). These are existing filenames, not a recommended standard. New SQL files should use lowercase `snake_case.sql`, descriptive actions, and layer names, for example `load_bronze_crm.sql` or `create_gold_views.sql`.
 
 Documentation files should use lowercase `snake_case.md`, e.g. `data_integration.md`, `naming_conventions.md`. Avoid spaces and spelling variations.
 
@@ -112,4 +112,4 @@ Documentation files should use lowercase `snake_case.md`, e.g. `data_integration
 
 ## Summary
 
-The data dictionary uses source/subject prefixes (`Cst_`, `Prd_`, `sls_`, `erp_`), compact abbreviations (`nm`, `dt`, `BDATE`, `CNTRY`), and identifier/measure suffixes (`_id`, `_key`, `_sales`, `_quantity`, `_price`). The Gold layer uses `dim_` and `fact_` prefixes with readable but inconsistently cased aliases. Keep source naming traceable in raw layers, document every abbreviation and exception, and use one explicit lowercase `snake_case` convention for new curated objects.
+The data dictionary uses source/subject prefixes (`Cst_`, `Prd_`, `sls_`, `erp_`), compact abbreviations (`nm`, `dt`, `BDATE`, `CNTRY`), and identifier/measure suffixes (`_id`, `_key`, `_sales`, `_quantity`, `_price`). Apply these consistently while preserving the provenience of source fields and moving toward clear, documented names in curated warehouse objects.
